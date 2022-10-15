@@ -1,7 +1,6 @@
 import argparse
 import cv2
 import os
-import json
 from random import choice
 
 from pycoral.adapters.common import input_size
@@ -22,15 +21,18 @@ CAMERA_IDX = 1
 THRESHOLD = 10
 
 
+gpio_p16 = None
+gpio_p18 = None
+gpio_p22 = None
+
+
 class Interest:
     interests = ["person", "car", "bench", "dog", "backpack", "cup", "fork", "knife", "spoon", "cell phone", "book", "chair", "dining table"]
     overlaps = {
       "backpack": ["suitcase"],
       "bench": ["couch"]
     }
-    current_interest = "person"
-    found = 0
-    roundsHappy = 0
+    current_interest = None
 
     @classmethod
     def pickNewInterest(cls):
@@ -39,24 +41,6 @@ class Interest:
     def __init__(self):
         type(self).pickNewInterest()
 
-    @classmethod
-    def peeked(cls, magnitude=1):
-        cls.found = min(100, cls.found + 1)
-
-    @classmethod
-    def bored(cls, magnitude=1):
-        cls.found = max(0, cls.found - magnitude)
-
-    @classmethod
-    def analyze(cls):
-        cls.roundsHappy = cls.roundsHappy + 1 if cls.found > 60 else 0
-        if cls.roundsHappy > 100:
-            print("Changing interest to...")
-            cls.pickNewInterest()
-            cls.roundsHappy = 0
-            print(cls.current_interest)
-        with open("interest.json", "w") as f:
-            f.write(json.dumps({"current_interest": cls.current_interest, "happy": cls.found}))
 
 
 def gen_frames():
@@ -78,17 +62,11 @@ def gen_frames():
             cv2_im_rgb = cv2.cvtColor(cv2_im, cv2.COLOR_BGR2RGB)
             cv2_im_rgb = cv2.resize(cv2_im_rgb, inference_size)
             run_inference(interpreter, cv2_im_rgb.tobytes())
-            foci = [f for f in get_objects(interpreter, THRESHOLD)[:3] if f.score > 0.4]
-            if foci:
-                found = sum([labels[focus.id] == Interest.current_interest for focus in foci]) > 0
-                if found:
-                    Interest.peeked(1)
-                else:
-                    Interest.bored(1)
-            else:
-                Interest.bored(5)
-            Interest.analyze()
-            cv2_im = append_objs_to_img(cv2_im, inference_size, foci, labels)
+            obj = get_objects(interpreter, THRESHOLD)[:3]
+            if obj:
+                focus = obj[0]
+                print(f"Focus: {focus}")
+            cv2_im = append_objs_to_img(cv2_im, inference_size, obj, labels)
 
             ret, cv2_im = cv2.imencode('.jpg', cv2_im)
             yield (b'--frame\r\n'
@@ -122,11 +100,6 @@ def video_feed():
     return Response(gen_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 
-@app.route('/interest')
-def interest():
-    return Response(f"Interested in {Interest.current_interest} and currently {Interest.found} happy")
-
-
 @app.route('/')
 def index():
     """Video streaming home page."""
@@ -152,5 +125,16 @@ if __name__ == '__main__':
     THRESHOLD = args.threshold
     print('Loading {} with {} labels.'.format(args.model, args.labels))
 
-    app.run(debug=True, host="0.0.0.0")
+    gpio_p16 = GPIO("/dev/gpiochip2", 9, "out")
+    gpio_p18 = GPIO("/dev/gpiochip4", 10, "out")
+    gpio_p22 = GPIO("/dev/gpiochip4", 12, "out")
+
+    try:
+        while True:
+            from time import sleep
+            sleep(1)
+    finally:
+        gpio_p16.close()
+        gpio_p18.close()
+        gpio_p22.close()
 
