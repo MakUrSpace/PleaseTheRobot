@@ -1,0 +1,17 @@
+[Unit]
+Description=PleaseTheRobot Camera Controller Service
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 /home/mendel/PleaseTheRobot/flaskDetectApp.py
+Restart=always
+RestartSec=10                       
+StandardOutput=syslog               
+StandardError=syslog                
+SyslogIdentifier=pleaseTheRobotFlaskApp
+WorkingDirectory=/home/mendel/PleaseTheRobot
+Environment=PYTHONUNBUFFERED=1
+
+
+[Install]
+WantedBy=multi-user.target

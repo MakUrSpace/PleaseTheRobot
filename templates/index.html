@@ -10,8 +10,14 @@
           integrity="sha384-MCw98/SFnGE8fJT3GXwEOngsV7Zt27NXFoaoApmYm81iuXoPkFOJwJ8ERdknLPMO" crossorigin="anonymous">
 
     <title>Live Streaming Demonstration</title>
+    <script>
+	function refreshInterest(){
+        	document.getElementById('interestReport').contentWindow.location.reload();
+		setTimeout(refreshInterest, 100);
+	}
+    </script>
 </head>
-<body>
+<body onload="refreshInterest();">
 <div class="container">
     <div class="row">
         <div class="col-lg-8  offset-lg-2">
@@ -19,6 +25,9 @@
             <img src="{{ url_for('video_feed') }}" width="100%">
         </div>
     </div>
+</div>
+<div>
+	<IFRAME id="interestReport" src="/interest"></IFRAME>
 </div>
 </body>
 </html>

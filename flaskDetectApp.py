@@ -3,6 +3,7 @@ import cv2
 import os
 import json
 from random import choice
+from datetime import datetime, timedelta
 
 from pycoral.adapters.common import input_size
 from pycoral.adapters.detect import get_objects
@@ -23,14 +24,15 @@ THRESHOLD = 10
 
 
 class Interest:
-    interests = ["person", "car", "bench", "dog", "backpack", "cup", "fork", "knife", "spoon", "cell phone", "book", "chair", "dining table"]
+    interests = ["person", "dog", "backpack", "cup", "scissors", "book", "chair", "dining table"]
     overlaps = {
       "backpack": ["suitcase"],
-      "bench": ["couch"]
+      "cup": ["bottle"]
     }
     current_interest = "person"
     found = 0
-    roundsHappy = 0
+    becameHappy = None
+    becameSad = None
 
     @classmethod
     def pickNewInterest(cls):
@@ -48,15 +50,30 @@ class Interest:
         cls.found = max(0, cls.found - magnitude)
 
     @classmethod
+    def interestMatch(cls, label):
+        matches = [cls.current_interest] + ([] if cls.current_interest not in cls.overlaps else cls.overlaps[cls.current_interest])
+        return label in matches
+
+    @classmethod
     def analyze(cls):
-        cls.roundsHappy = cls.roundsHappy + 1 if cls.found > 60 else 0
-        if cls.roundsHappy > 100:
-            print("Changing interest to...")
-            cls.pickNewInterest()
-            cls.roundsHappy = 0
-            print(cls.current_interest)
         with open("interest.json", "w") as f:
             f.write(json.dumps({"current_interest": cls.current_interest, "happy": cls.found}))
+
+        if cls.found > 60:
+            if cls.becameHappy is None:
+                cls.becameHappy = datetime.utcnow()
+                print(f"Setting becameHappy: {cls.becameHappy}")
+
+            boredomTime = 15
+            if cls.becameHappy is not None and (datetime.utcnow() - cls.becameHappy).total_seconds() > boredomTime:
+                print("Changing interest to...")
+                cls.pickNewInterest()
+                print(cls.current_interest)
+                cls.becameHappy = None
+            elif cls.becameHappy is not None:
+                print(f"{boredomTime - (datetime.utcnow() - cls.becameHappy).total_seconds()} seconds until bored...")
+        else:
+            cls.becameHappy = None
 
 
 def gen_frames():
@@ -80,7 +97,7 @@ def gen_frames():
             run_inference(interpreter, cv2_im_rgb.tobytes())
             foci = [f for f in get_objects(interpreter, THRESHOLD)[:3] if f.score > 0.4]
             if foci:
-                found = sum([labels[focus.id] == Interest.current_interest for focus in foci]) > 0
+                found = sum([Interest.interestMatch(labels[focus.id]) for focus in foci]) > 0
                 if found:
                     Interest.peeked(1)
                 else:
@@ -124,7 +141,8 @@ def video_feed():
 
 @app.route('/interest')
 def interest():
-    return Response(f"Interested in {Interest.current_interest} and currently {Interest.found} happy")
+    timeUntilBored = int(15 - (datetime.utcnow() - Interest.becameHappy).total_seconds() if Interest.becameHappy is not None else 999)
+    return Response(f"Interested in {Interest.current_interest}, currently {Interest.found} happy, and {timeUntilBored} seconds until bored...")
 
 
 @app.route('/')
